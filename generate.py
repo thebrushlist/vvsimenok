@@ -163,7 +163,35 @@ def stripe_request(method, endpoint, **params):
         return None, f"HTTP {e.code}: {msg}"
 
 
-def create_stripe_product(title, price_cents, image_url=None):
+def create_shipping_rates():
+    """Create standard and express worldwide shipping rates, return their IDs."""
+    rates = []
+    for name, amount, min_days, max_days in [
+        ("Standard Worldwide", 1200, 7, 21),
+        ("Express Worldwide", 3500, 3, 7),
+    ]:
+        rate, err = stripe_request(
+            "POST", "shipping_rates",
+            display_name=name,
+            type="fixed_amount",
+            **{
+                "fixed_amount[amount]": str(amount),
+                "fixed_amount[currency]": "usd",
+                "delivery_estimate[minimum][unit]": "business_day",
+                "delivery_estimate[minimum][value]": str(min_days),
+                "delivery_estimate[maximum][unit]": "business_day",
+                "delivery_estimate[maximum][value]": str(max_days),
+            },
+        )
+        if err:
+            print(f"  ⚠  Stripe shipping rate error for '{name}': {err}")
+        else:
+            rates.append(rate["id"])
+            print(f"  ✓ shipping rate: {name} (${amount/100:.0f})")
+    return rates
+
+
+def create_stripe_product(title, price_cents, shipping_rate_ids=None, image_url=None):
     prod_params = {"name": f"Print — {title}"}
     if image_url:
         prod_params["images[0]"] = image_url
@@ -182,10 +210,34 @@ def create_stripe_product(title, price_cents, image_url=None):
         return None
     price_id = price["id"]
 
-    link, err = stripe_request(
-        "POST", "payment_links",
-        **{"line_items[0][price]": price_id, "line_items[0][quantity]": "1"},
-    )
+    link_params = {
+        "line_items[0][price]": price_id,
+        "line_items[0][quantity]": "1",
+        "shipping_address_collection[allowed_countries][0]": "US",
+        "shipping_address_collection[allowed_countries][1]": "GB",
+        "shipping_address_collection[allowed_countries][2]": "AU",
+        "shipping_address_collection[allowed_countries][3]": "CA",
+        "shipping_address_collection[allowed_countries][4]": "DE",
+        "shipping_address_collection[allowed_countries][5]": "FR",
+        "shipping_address_collection[allowed_countries][6]": "ES",
+        "shipping_address_collection[allowed_countries][7]": "IT",
+        "shipping_address_collection[allowed_countries][8]": "NL",
+        "shipping_address_collection[allowed_countries][9]": "JP",
+        "shipping_address_collection[allowed_countries][10]": "NZ",
+        "shipping_address_collection[allowed_countries][11]": "SE",
+        "shipping_address_collection[allowed_countries][12]": "NO",
+        "shipping_address_collection[allowed_countries][13]": "DK",
+        "shipping_address_collection[allowed_countries][14]": "PT",
+        "shipping_address_collection[allowed_countries][15]": "IE",
+        "shipping_address_collection[allowed_countries][16]": "AT",
+        "shipping_address_collection[allowed_countries][17]": "CH",
+        "shipping_address_collection[allowed_countries][18]": "BE",
+        "shipping_address_collection[allowed_countries][19]": "SG",
+    }
+    for i, rate_id in enumerate(shipping_rate_ids or []):
+        link_params[f"shipping_options[{i}][shipping_rate]"] = rate_id
+
+    link, err = stripe_request("POST", "payment_links", **link_params)
     if err:
         print(f"  ⚠  Stripe payment-link error for '{title}': {err}")
         return None
@@ -213,10 +265,12 @@ def main():
     print(f"Prints: {len(prints)}")
 
     if STRIPE_API_KEY:
+        print("Creating shipping rates…")
+        shipping_ids = create_shipping_rates()
         for pr in prints:
             if pr["status"] == "available":
                 print(f"  → creating Stripe link for '{pr['title']}' (${pr['price']})…")
-                url = create_stripe_product(pr["title"], pr["price"] * 100)
+                url = create_stripe_product(pr["title"], pr["price"] * 100, shipping_ids)
                 if url:
                     pr["payment_link"] = url
                     print(f"    ✓ {url}")
@@ -440,7 +494,12 @@ TEMPLATE = r"""<!doctype html>
     transition: transform 0.2s ease;
   }
   .card:hover { transform: translateY(-3px); }
-  .card.sold { opacity: 0.55; }
+  .card.sold { }
+  .card.sold .card-img img {
+    filter: blur(3px) saturate(0.3) brightness(1.1);
+    transform: scale(1.15);
+  }
+  .card.sold .card-info { opacity: 0.5; }
   .card-img {
     aspect-ratio: 4 / 5; overflow: hidden;
     border: 1px solid var(--ink);
