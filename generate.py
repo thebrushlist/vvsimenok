@@ -1,19 +1,23 @@
 """
 Portfolio site generator.
 
-Reads two image folders and produces a static index.html.
+Reads three image folders and produces a static index.html.
 
 Folder layout
 ─────────────
-  originals/   night-tide_painting_available.jpg
-               portrait-of-lena_drawing_sold.jpg
+  paintings/   night-tide_50x70cm_available.jpg
+               harbour-dawn_80x100cm_sold.jpg
 
-  prints/      night-tide_25_available.jpg
-               katoomba-river_18_sold.jpg
+  drawings/    portrait-of-lena_A3_sold.jpg
+               street-scene_30x40cm_available.jpg
 
-Filenames are: name_meta_status.ext
-  • originals → name_type_status   (type = painting | drawing)
-  • prints    → name_price_status  (price in whole dollars)
+  prints/      night-tide_A3_25_available.jpg
+               katoomba-river_A4_18_sold.jpg
+
+Filenames:
+  • paintings → name_size_status
+  • drawings → name_size_status
+  • prints   → name_size_price_status
 
 Status: "available" or "sold".
 
@@ -24,8 +28,6 @@ Environment variables
 
 Run:
     STRIPE_API_KEY="sk_test_…" python3 generate.py
-
-Or via GitHub Actions (see .github/workflows/build.yml).
 """
 
 import os
@@ -40,7 +42,8 @@ from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 
 # ── config ───────────────────────────────────────────────────────────
-ORIGINALS_DIR = Path("originals")
+PAINTINGS_DIR = Path("paintings")
+DRAWINGS_DIR  = Path("drawings")
 PRINTS_DIR    = Path("prints")
 OUTPUT_PATH   = Path("index.html")
 
@@ -50,15 +53,14 @@ STRIPE_API     = "https://api.stripe.com"
 INQUIRY_EMAIL  = "vvsimenok@hotmail.com"
 
 SITE_TITLE     = "Vladimir Vladislav Simenok"
-SITE_SUBTITLE  = ""
 IG_HANDLE      = "vovasimenok"
 
 ABOUT_TEXT = (
-    "I've been travelling the world the last 2 years, accumulating works "
+    "I\u2019ve been travelling the world the last 2 years, accumulating works "
     "of landscapes, places and people. Using predominantly ink and paint "
     "as my mediums. I aim for work that stretches my creative potential as "
     "much as possible from large murals to smaller more precise works. "
-    "I've been selling prints, tattoos and originals on the road and mostly "
+    "I\u2019ve been selling prints, tattoos and originals on the road and mostly "
     "found opportunities through serendipity, making genuine lasting "
     "connections. I would like to work with artists that are bold and eager "
     "to challenge myself to breaking new boundaries."
@@ -68,7 +70,7 @@ STATEMENT_TEXT = (
     "The intention of my art is so a point in space can exist in the form "
     "of counsel and entertainment, accessible to the masses, bringing "
     "people together to converse and speculate on its impression. Whilst "
-    "simultaneously being a place of the viewer's expression of thoughts "
+    "simultaneously being a place of the viewer\u2019s expression of thoughts "
     "and emotions. At that exact particular point in time. With the goal "
     "to invite you to a complete standstill, pausing oneself from the ever "
     "turning idiosyncratic journey that is life."
@@ -94,50 +96,58 @@ def title_from_name(raw):
     return " ".join(w.capitalize() for w in re.split(r"[-_ ]+", raw))
 
 
-def parse_original(filename):
+def format_size(raw):
+    """50x70cm -> 50 x 70 cm, A3 -> A3"""
+    # Add spaces around 'x' in dimensions like 50x70cm
+    s = re.sub(r"(\d+)x(\d+)", r"\1 x \2", raw)
+    # Add space before unit if missing: 70cm -> 70 cm
+    s = re.sub(r"(\d)(cm|mm|in|inch)", r"\1 \2", s)
+    return s
+
+
+def parse_artwork(filename, folder):
+    """Parse paintings/drawings: name_size_status.ext"""
     stem = Path(filename).stem
     parts = stem.rsplit("_", 2)
     if len(parts) != 3:
-        print(f"  ⚠  skipping original (bad name): {filename}")
+        print(f"  \u26a0  skipping {folder}/{filename} (expected name_size_status)")
         return None
-    name, kind, status = parts
-    kind = kind.lower()
+    name, size, status = parts
     status = status.lower()
-    if kind not in ("painting", "drawing"):
-        print(f"  ⚠  skipping original (unknown type '{kind}'): {filename}")
-        return None
     if status not in ("available", "sold"):
-        print(f"  ⚠  skipping original (unknown status '{status}'): {filename}")
+        print(f"  \u26a0  skipping {folder}/{filename} (unknown status '{status}')")
         return None
     return {
         "file": filename,
-        "path": f"originals/{filename}",
+        "path": f"{folder}/{filename}",
         "title": title_from_name(name),
-        "type": kind.capitalize(),
+        "size": format_size(size),
         "status": status,
     }
 
 
 def parse_print(filename):
+    """Parse prints: name_size_price_status.ext"""
     stem = Path(filename).stem
-    parts = stem.rsplit("_", 2)
-    if len(parts) != 3:
-        print(f"  ⚠  skipping print (bad name): {filename}")
+    parts = stem.rsplit("_", 3)
+    if len(parts) != 4:
+        print(f"  \u26a0  skipping prints/{filename} (expected name_size_price_status)")
         return None
-    name, price_str, status = parts
+    name, size, price_str, status = parts
     status = status.lower()
     try:
         price = int(price_str)
     except ValueError:
-        print(f"  ⚠  skipping print (bad price '{price_str}'): {filename}")
+        print(f"  \u26a0  skipping prints/{filename} (bad price '{price_str}')")
         return None
     if status not in ("available", "sold"):
-        print(f"  ⚠  skipping print (unknown status '{status}'): {filename}")
+        print(f"  \u26a0  skipping prints/{filename} (unknown status '{status}')")
         return None
     return {
         "file": filename,
         "path": f"prints/{filename}",
         "title": title_from_name(name),
+        "size": format_size(size),
         "price": price,
         "status": status,
         "payment_link": None,
@@ -164,7 +174,6 @@ def stripe_request(method, endpoint, **params):
 
 
 def create_shipping_rates():
-    """Create standard and express worldwide shipping rates, return their IDs."""
     rates = []
     for name, amount, min_days, max_days in [
         ("Standard Worldwide", 1200, 7, 21),
@@ -184,20 +193,20 @@ def create_shipping_rates():
             },
         )
         if err:
-            print(f"  ⚠  Stripe shipping rate error for '{name}': {err}")
+            print(f"  \u26a0  Stripe shipping rate error for '{name}': {err}")
         else:
             rates.append(rate["id"])
-            print(f"  ✓ shipping rate: {name} (${amount/100:.0f})")
+            print(f"  \u2713 shipping rate: {name} (${amount/100:.0f})")
     return rates
 
 
 def create_stripe_product(title, price_cents, shipping_rate_ids=None, image_url=None):
-    prod_params = {"name": f"Print — {title}"}
+    prod_params = {"name": f"Print \u2014 {title}"}
     if image_url:
         prod_params["images[0]"] = image_url
     product, err = stripe_request("POST", "products", **prod_params)
     if err:
-        print(f"  ⚠  Stripe product error for '{title}': {err}")
+        print(f"  \u26a0  Stripe product error for '{title}': {err}")
         return None
     product_id = product["id"]
 
@@ -206,7 +215,7 @@ def create_stripe_product(title, price_cents, shipping_rate_ids=None, image_url=
         product=product_id, currency="usd", unit_amount=str(price_cents),
     )
     if err:
-        print(f"  ⚠  Stripe price error for '{title}': {err}")
+        print(f"  \u26a0  Stripe price error for '{title}': {err}")
         return None
     price_id = price["id"]
 
@@ -239,22 +248,34 @@ def create_stripe_product(title, price_cents, shipping_rate_ids=None, image_url=
 
     link, err = stripe_request("POST", "payment_links", **link_params)
     if err:
-        print(f"  ⚠  Stripe payment-link error for '{title}': {err}")
+        print(f"  \u26a0  Stripe payment-link error for '{title}': {err}")
         return None
     return link.get("url")
 
 
 # ── main ─────────────────────────────────────────────────────────────
 def main():
-    originals = []
-    if ORIGINALS_DIR.exists():
-        for p in sorted(ORIGINALS_DIR.iterdir()):
+    # ── read paintings ──
+    paintings = []
+    if PAINTINGS_DIR.exists():
+        for p in sorted(PAINTINGS_DIR.iterdir()):
             if p.suffix.lower() in IMAGE_EXTS:
-                parsed = parse_original(p.name)
+                parsed = parse_artwork(p.name, "paintings")
                 if parsed:
-                    originals.append(parsed)
-    print(f"Originals: {len(originals)}")
+                    paintings.append(parsed)
+    print(f"Paintings: {len(paintings)}")
 
+    # ── read drawings ──
+    drawings = []
+    if DRAWINGS_DIR.exists():
+        for p in sorted(DRAWINGS_DIR.iterdir()):
+            if p.suffix.lower() in IMAGE_EXTS:
+                parsed = parse_artwork(p.name, "drawings")
+                if parsed:
+                    drawings.append(parsed)
+    print(f"Drawings: {len(drawings)}")
+
+    # ── read prints ──
     prints = []
     if PRINTS_DIR.exists():
         for p in sorted(PRINTS_DIR.iterdir()):
@@ -264,36 +285,37 @@ def main():
                     prints.append(parsed)
     print(f"Prints: {len(prints)}")
 
+    # ── Stripe ──
     if STRIPE_API_KEY:
-        print("Creating shipping rates…")
+        print("Creating shipping rates\u2026")
         shipping_ids = create_shipping_rates()
         for pr in prints:
             if pr["status"] == "available":
-                print(f"  → creating Stripe link for '{pr['title']}' (${pr['price']})…")
+                print(f"  \u2192 creating Stripe link for '{pr['title']}' (${pr['price']})\u2026")
                 url = create_stripe_product(pr["title"], pr["price"] * 100, shipping_ids)
                 if url:
                     pr["payment_link"] = url
-                    print(f"    ✓ {url}")
+                    print(f"    \u2713 {url}")
     else:
-        print("No STRIPE_API_KEY — skipping payment link creation.")
+        print("No STRIPE_API_KEY \u2014 skipping payment link creation.")
 
-    html_out = render(originals, prints)
+    html_out = render(paintings, drawings, prints)
     OUTPUT_PATH.write_text(html_out, encoding="utf-8")
     print(f"Wrote {OUTPUT_PATH} ({len(html_out):,} bytes)")
 
 
 # ── HTML rendering ───────────────────────────────────────────────────
-def render(originals, prints):
+def render(paintings, drawings, prints):
     e = html.escape
     now = dt.datetime.now(dt.timezone.utc)
     year = now.strftime("%Y")
 
-    # ── originals cards ──
-    originals_html = ""
-    if not originals:
-        originals_html = '<p class="empty">No originals yet.</p>'
-    else:
-        for o in originals:
+    def render_artwork_cards(items, section_type):
+        """Render cards for paintings or drawings (inquiry CTA)."""
+        if not items:
+            return f'<p class="empty">No {section_type} yet.</p>'
+        cards = ""
+        for o in items:
             sold_cls = " sold" if o["status"] == "sold" else ""
             badge = '<span class="badge sold-badge">Sold</span>' if o["status"] == "sold" else ""
             if o["status"] == "available":
@@ -305,53 +327,56 @@ def render(originals, prints):
                 )
             else:
                 cta = ""
-            originals_html += f"""
+            cards += f"""
               <div class="card{sold_cls}">
                 <div class="card-img"><img src="{e(o['path'])}" alt="{e(o['title'])}" loading="lazy"></div>
                 <div class="card-info">
                   <h3>{e(o['title'])}</h3>
-                  <span class="card-type">{e(o['type'])}</span>
+                  <span class="card-size">{e(o['size'])}</span>
                   {badge}
                   {cta}
                 </div>
               </div>"""
+        return cards
 
-    # ── prints cards ──
-    prints_html = ""
-    if not prints:
-        prints_html = '<p class="empty">No prints yet.</p>'
-    else:
-        for pr in prints:
+    def render_print_cards(items):
+        if not items:
+            return '<p class="empty">No prints yet.</p>'
+        cards = ""
+        for pr in items:
             sold_cls = " sold" if pr["status"] == "sold" else ""
             badge = '<span class="badge sold-badge">Sold</span>' if pr["status"] == "sold" else ""
             if pr["status"] == "available" and pr["payment_link"]:
-                cta = f'<a class="cta" href="{e(pr["payment_link"])}" target="_blank" rel="noopener">Buy — ${pr["price"]}</a>'
+                cta = f'<a class="cta" href="{e(pr["payment_link"])}" target="_blank" rel="noopener">Buy \u2014 ${pr["price"]}</a>'
             elif pr["status"] == "available":
                 cta = f'<span class="cta-price">${pr["price"]}</span>'
             else:
                 cta = ""
-            prints_html += f"""
+            cards += f"""
               <div class="card{sold_cls}">
                 <div class="card-img"><img src="{e(pr['path'])}" alt="{e(pr['title'])}" loading="lazy"></div>
                 <div class="card-info">
                   <h3>{e(pr['title'])}</h3>
+                  <span class="card-size">{e(pr['size'])}</span>
                   {badge}
                   {cta}
                 </div>
               </div>"""
+        return cards
 
     return Template(TEMPLATE).safe_substitute(
         site_title=e(SITE_TITLE),
-        site_subtitle=e(SITE_SUBTITLE),
         ig_handle=e(IG_HANDLE),
         about=e(ABOUT_TEXT),
         statement=e(STATEMENT_TEXT),
         ambition=e(AMBITION_TEXT),
-        originals=originals_html,
-        prints=prints_html,
+        paintings=render_artwork_cards(paintings, "paintings"),
+        drawings=render_artwork_cards(drawings, "drawings"),
+        prints=render_print_cards(prints),
         year=year,
         email=e(INQUIRY_EMAIL),
-        originals_count=len(originals),
+        paintings_count=len(paintings),
+        drawings_count=len(drawings),
         prints_count=len(prints),
     )
 
@@ -363,7 +388,6 @@ TEMPLATE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>$site_title</title>
 <meta property="og:title" content="$site_title">
-<meta property="og:description" content="$site_subtitle">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
@@ -389,7 +413,6 @@ TEMPLATE = r"""<!doctype html>
     overflow-x: hidden;
   }
 
-  /* ─── ornamental border frame ─── */
   .page-frame {
     position: fixed; inset: 0; pointer-events: none; z-index: 100;
     border: 2px solid var(--ink);
@@ -403,7 +426,6 @@ TEMPLATE = r"""<!doctype html>
 
   .wrap { max-width: 920px; margin: 0 auto; padding: 80px 48px 64px; }
 
-  /* ─── nav ─── */
   nav {
     display: flex; justify-content: center;
     gap: 32px; padding: 24px 0 48px;
@@ -422,7 +444,6 @@ TEMPLATE = r"""<!doctype html>
   }
   nav a:hover::after { width: 100%; }
 
-  /* ─── masthead ─── */
   .masthead {
     text-align: center; padding: 0 0 48px;
     border-bottom: 1px solid var(--ink);
@@ -432,16 +453,8 @@ TEMPLATE = r"""<!doctype html>
     font-weight: 400; font-style: italic;
     font-size: clamp(42px, 8vw, 72px);
     letter-spacing: -0.02em; line-height: 1;
-    margin-bottom: 8px;
-  }
-  .masthead .subtitle {
-    font-family: "Cormorant Garamond", serif;
-    font-size: 13px; font-weight: 400;
-    letter-spacing: 0.35em; text-transform: uppercase;
-    color: var(--ink-soft);
   }
 
-  /* ─── ornamental divider ─── */
   .ornament {
     display: flex; align-items: center; justify-content: center;
     gap: 16px; padding: 32px 0;
@@ -452,7 +465,6 @@ TEMPLATE = r"""<!doctype html>
     background: linear-gradient(90deg, transparent, var(--ink-faint), transparent);
   }
 
-  /* ─── about ─── */
   .about {
     max-width: 620px; margin: 0 auto;
     padding: 0 0 48px; text-align: center;
@@ -464,7 +476,6 @@ TEMPLATE = r"""<!doctype html>
   }
   .about p:last-child { margin-bottom: 0; }
 
-  /* ─── section headings ─── */
   .section-title {
     text-align: center; padding: 48px 0 36px;
     border-top: 1px solid var(--ink);
@@ -482,7 +493,6 @@ TEMPLATE = r"""<!doctype html>
     margin-top: 4px;
   }
 
-  /* ─── card grid ─── */
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -520,8 +530,9 @@ TEMPLATE = r"""<!doctype html>
     font-weight: 400; font-style: italic;
     font-size: 22px; letter-spacing: -0.01em;
     line-height: 1.15;
+    text-transform: uppercase;
   }
-  .card-type {
+  .card-size {
     font-family: "Cormorant Garamond", serif;
     font-size: 12px; letter-spacing: 0.25em;
     text-transform: uppercase; color: var(--ink-faint);
@@ -559,7 +570,6 @@ TEMPLATE = r"""<!doctype html>
     padding: 48px 0;
   }
 
-  /* ─── footer ─── */
   footer {
     border-top: 1px solid var(--ink);
     padding: 32px 0 0;
@@ -572,7 +582,6 @@ TEMPLATE = r"""<!doctype html>
   footer a { color: var(--ink-soft); text-decoration: none; }
   footer a:hover { color: var(--ink); }
 
-  /* ─── touch devices: disable hover lift ─── */
   @media (hover: none) {
     .card:hover { transform: none; }
     .card:hover .card-img img { transform: none; }
@@ -583,63 +592,33 @@ TEMPLATE = r"""<!doctype html>
     .page-frame { margin: 6px; }
     .page-frame::before { inset: 3px; }
     .wrap { padding: 48px 28px 48px; }
-
-    nav {
-      flex-wrap: wrap; justify-content: center;
-      gap: 8px 24px; font-size: 12px;
-      padding: 16px 0 28px;
-    }
+    nav { flex-wrap: wrap; gap: 8px 24px; font-size: 12px; padding: 16px 0 28px; }
     nav a { padding: 8px 4px; }
-
     .masthead { padding: 0 0 32px; }
-    .masthead h1 {
-      font-size: clamp(28px, 7vw, 48px);
-      line-height: 1.05;
-    }
-
+    .masthead h1 { font-size: clamp(28px, 7vw, 48px); line-height: 1.05; }
     .ornament { padding: 24px 0; }
-
     .section-title { padding: 28px 0 20px; }
     .section-title h2 { font-size: clamp(24px, 6vw, 36px); }
-
-    .grid {
-      grid-template-columns: 1fr 1fr;
-      gap: 24px 16px; padding-bottom: 32px;
-    }
+    .grid { grid-template-columns: 1fr 1fr; gap: 24px 16px; padding-bottom: 32px; }
     .card-img { aspect-ratio: 3 / 4; }
     .card-info { padding: 10px 0 0; gap: 5px; }
     .card-info h3 { font-size: 17px; }
-    .card-type { font-size: 11px; }
-
-    .cta {
-      font-size: 11px; padding: 10px 18px;
-      min-height: 44px;
-      display: inline-flex; align-items: center;
-    }
-
+    .card-size { font-size: 11px; }
+    .cta { font-size: 11px; padding: 10px 18px; min-height: 44px; display: inline-flex; align-items: center; }
     .about { padding: 0 0 28px; }
     .about p { font-size: 15px; line-height: 1.7; margin-bottom: 16px; }
-
-    footer {
-      padding-top: 24px; margin-top: 28px;
-      gap: 6px; font-size: 11px;
-    }
+    footer { padding-top: 24px; margin-top: 28px; gap: 6px; font-size: 11px; }
   }
 
   @media (max-width: 420px) {
     .page-frame { display: none; }
     .wrap { padding: 24px 20px 40px; }
-
     nav { gap: 6px 18px; font-size: 11px; padding: 12px 0 24px; }
-
     .masthead h1 { font-size: clamp(24px, 8vw, 36px); }
-
     .grid { grid-template-columns: 1fr; gap: 28px; }
     .card-img { aspect-ratio: 4 / 5; }
     .card-info h3 { font-size: 20px; }
-
     .cta { padding: 12px 20px; font-size: 12px; }
-
     .about p { font-size: 14px; }
     footer { font-size: 10px; letter-spacing: 0.18em; }
   }
@@ -652,7 +631,8 @@ TEMPLATE = r"""<!doctype html>
 <div class="wrap">
 
   <nav>
-    <a href="#originals">Originals</a>
+    <a href="#paintings">Paintings</a>
+    <a href="#drawings">Drawings</a>
     <a href="#prints">Prints</a>
     <a href="#about">About</a>
     <a href="mailto:$email">Contact</a>
@@ -662,11 +642,17 @@ TEMPLATE = r"""<!doctype html>
     <h1>$site_title</h1>
   </header>
 
-  <div class="section-title" id="originals">
-    <h2>Originals</h2>
-    <div class="count">$originals_count works</div>
+  <div class="section-title" id="paintings">
+    <h2>Paintings</h2>
+    <div class="count">$paintings_count works</div>
   </div>
-  <div class="grid">$originals</div>
+  <div class="grid">$paintings</div>
+
+  <div class="section-title" id="drawings">
+    <h2>Drawings</h2>
+    <div class="count">$drawings_count works</div>
+  </div>
+  <div class="grid">$drawings</div>
 
   <div class="section-title" id="prints">
     <h2>Prints</h2>
