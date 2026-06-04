@@ -33,7 +33,8 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/
-          cp -r originals _site/originals 2>/dev/null || true
+          cp -r paintings _site/paintings 2>/dev/null || true
+          cp -r drawings _site/drawings 2>/dev/null || true
           cp -r prints _site/prints 2>/dev/null || true
 
       - uses: actions/upload-pages-artifact@v3
