@@ -55,36 +55,27 @@ INQUIRY_EMAIL  = "vvsimenok@hotmail.com"
 SITE_TITLE     = "Vladimir Vladislav Simenok"
 IG_HANDLE      = "vovasimenok"
 
-ABOUT_TEXT = (
-    "I\u2019ve been travelling the world the last 2 years, accumulating works "
-    "of landscapes, places and people. Using predominantly ink and paint "
-    "as my mediums. I aim for work that stretches my creative potential as "
-    "much as possible from large murals to smaller more precise works. "
-    "I\u2019ve been selling prints, tattoos and originals on the road and mostly "
-    "found opportunities through serendipity, making genuine lasting "
-    "connections. I would like to work with artists that are bold and eager "
-    "to challenge myself to breaking new boundaries."
+BIOGRAPHY_PARAS = (
+    "I am a self-taught artist who started painting in 2024. Since 2024 I have "
+    "been travelling extensively, covering 32 countries \u2014 Albania, Armenia, "
+    "Australia, Austria, Azerbaijan, Bahrain, Cambodia, Czechia, Egypt, Estonia, "
+    "France, Georgia, Germany, Greece, Hungary, India, Indonesia, Italy, Laos, "
+    "Malaysia, Nepal, New Zealand, Philippines, Singapore, Slovakia, South Korea, "
+    "Sri Lanka, Thailand, United Arab Emirates, Vanuatu, Vatican and Vietnam \u2014 "
+    "of a current tally of 54.",
+
+    "Induced by the grief of losing a child. Pursuing travel and art were the "
+    "alternative to serving in the Ukrainian foreign legion. With the focus of "
+    "my art to invite people to pause, converse and reflect.",
 )
 
 STATEMENT_TEXT = (
-    "The intention of my art is so a point in space can exist in the form "
-    "of counsel and entertainment, accessible to the masses, bringing "
-    "people together to converse and speculate on its impression. Whilst "
-    "simultaneously being a place of the viewer\u2019s expression of thoughts "
-    "and emotions. At that exact particular point in time. With the goal "
-    "to invite you to a complete standstill, pausing oneself from the ever "
-    "turning idiosyncratic journey that is life."
-)
-
-AMBITION_TEXT = (
-    "My ambitions this year are to return home with successfully producing "
-    "a collection of paintings from the studies and works I have accrued "
-    "from my journey. Which will hopefully fund my ability to rent a studio "
-    "to create even more works. During my journey I realised I cannot "
-    "sustain travelling and creating art full time, although I have been "
-    "successful in recent sales of original works in this year as well as "
-    "last, I realise I need to be fixed in a place and be apart of a "
-    "community to become much more successful."
+    "The intention of my art is to create a point in space which can exist in "
+    "the form of counsel and entertainment, bringing people together to converse "
+    "and speculate on its impression. Whilst simultaneously being a place for the "
+    "viewer\u2019s expression of thought and emotion. At that exact point in time. "
+    "An invitation to draw you into a complete standstill, pausing oneself from "
+    "the ever-turning idiosyncratic journey that is life."
 )
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -201,7 +192,7 @@ def create_shipping_rates():
 
 
 def create_stripe_product(title, price_cents, shipping_rate_ids=None, image_url=None):
-    prod_params = {"name": f"Print \u2014 {title}"}
+    prod_params = {"name": f"Signed printed digital scan \u2014 {title}"}
     if image_url:
         prod_params["images[0]"] = image_url
     product, err = stripe_request("POST", "products", **prod_params)
@@ -367,9 +358,8 @@ def render(paintings, drawings, prints):
     return Template(TEMPLATE).safe_substitute(
         site_title=e(SITE_TITLE),
         ig_handle=e(IG_HANDLE),
-        about=e(ABOUT_TEXT),
-        statement=e(STATEMENT_TEXT),
-        ambition=e(AMBITION_TEXT),
+        biography="".join(f"<p>{e(p)}</p>" for p in BIOGRAPHY_PARAS),
+        statement=f"<p>{e(STATEMENT_TEXT)}</p>",
         paintings=render_artwork_cards(paintings, "paintings"),
         drawings=render_artwork_cards(drawings, "drawings"),
         prints=render_print_cards(prints),
@@ -453,6 +443,21 @@ TEMPLATE = r"""<!doctype html>
     font-weight: 400; font-style: italic;
     font-size: clamp(42px, 8vw, 72px);
     letter-spacing: -0.02em; line-height: 1;
+  }
+  .masthead-handle {
+    display: inline-block; margin-top: 14px;
+    font-family: "Cormorant Garamond", serif;
+    font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--ink-soft); text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.25s ease, border-color 0.25s ease;
+  }
+  .masthead-handle:hover { color: var(--ink); border-bottom-color: var(--ink); }
+  .shop-note {
+    text-align: center; margin: -20px 0 28px;
+    font-family: "Cormorant Garamond", serif;
+    font-size: 13px; letter-spacing: 0.12em;
+    color: var(--ink-soft); font-style: italic;
   }
 
   .ornament {
@@ -633,32 +638,17 @@ TEMPLATE = r"""<!doctype html>
   <nav>
     <a href="#paintings">Paintings</a>
     <a href="#drawings">Drawings</a>
-    <a href="#prints">Prints</a>
-    <a href="#about">About</a>
+    <a href="#shop">Shop</a>
+    <a href="#biography">Biography</a>
+    <a href="#statement">Statement</a>
+    <a href="https://instagram.com/$ig_handle" target="_blank" rel="noopener">Instagram</a>
     <a href="mailto:$email">Contact</a>
   </nav>
 
   <header class="masthead">
     <h1>$site_title</h1>
+    <a class="masthead-handle" href="https://instagram.com/$ig_handle" target="_blank" rel="noopener">@$ig_handle</a>
   </header>
-
-  <div class="section-title" id="paintings">
-    <h2>Paintings</h2>
-    <div class="count">$paintings_count works</div>
-  </div>
-  <div class="grid">$paintings</div>
-
-  <div class="section-title" id="drawings">
-    <h2>Drawings</h2>
-    <div class="count">$drawings_count works</div>
-  </div>
-  <div class="grid">$drawings</div>
-
-  <div class="section-title" id="prints">
-    <h2>Prints</h2>
-    <div class="count">$prints_count editions</div>
-  </div>
-  <div class="grid">$prints</div>
 
   <div class="ornament">
     <div class="ornament-line"></div>
@@ -673,11 +663,34 @@ TEMPLATE = r"""<!doctype html>
     <div class="ornament-line"></div>
   </div>
 
-  <section class="about" id="about">
-    <p>$about</p>
-    <p>$statement</p>
-    <p>$ambition</p>
-  </section>
+  <div class="section-title" id="paintings">
+    <h2>Paintings</h2>
+    <div class="count">$paintings_count works</div>
+  </div>
+  <div class="grid">$paintings</div>
+
+  <div class="section-title" id="drawings">
+    <h2>Drawings</h2>
+    <div class="count">$drawings_count works</div>
+  </div>
+  <div class="grid">$drawings</div>
+
+  <div class="section-title" id="shop">
+    <h2>Shop</h2>
+    <div class="count">$prints_count prints</div>
+  </div>
+  <p class="shop-note">Signed and printed digital scans &middot; shipped worldwide</p>
+  <div class="grid">$prints</div>
+
+  <div class="section-title" id="biography">
+    <h2>Biography</h2>
+  </div>
+  <section class="about">$biography</section>
+
+  <div class="section-title" id="statement">
+    <h2>Artist Statement</h2>
+  </div>
+  <section class="about">$statement</section>
 
   <footer>
     <span><a href="https://instagram.com/$ig_handle">@$ig_handle</a></span>
