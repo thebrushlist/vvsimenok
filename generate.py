@@ -169,23 +169,25 @@ def stripe_request(method, endpoint, **params):
 
 def create_shipping_rates():
     rates = []
-    for name, amount, min_days, max_days in [
+    # name, amount (cents), min_days, max_days — min/max may be None where no transit applies
+    rate_specs = [
         ("Standard Worldwide", 1200, 7, 21),
         ("Express Worldwide", 3500, 3, 7),
-    ]:
-        rate, err = stripe_request(
-            "POST", "shipping_rates",
-            display_name=name,
-            type="fixed_amount",
-            **{
-                "fixed_amount[amount]": str(amount),
-                "fixed_amount[currency]": "usd",
-                "delivery_estimate[minimum][unit]": "business_day",
-                "delivery_estimate[minimum][value]": str(min_days),
-                "delivery_estimate[maximum][unit]": "business_day",
-                "delivery_estimate[maximum][value]": str(max_days),
-            },
-        )
+        ("Prior Agreed Collection", 0, None, None),
+    ]
+    for name, amount, min_days, max_days in rate_specs:
+        params = {
+            "display_name": name,
+            "type": "fixed_amount",
+            "fixed_amount[amount]": str(amount),
+            "fixed_amount[currency]": "usd",
+        }
+        if min_days is not None and max_days is not None:
+            params["delivery_estimate[minimum][unit]"] = "business_day"
+            params["delivery_estimate[minimum][value]"] = str(min_days)
+            params["delivery_estimate[maximum][unit]"] = "business_day"
+            params["delivery_estimate[maximum][value]"] = str(max_days)
+        rate, err = stripe_request("POST", "shipping_rates", **params)
         if err:
             print(f"  \u26a0  Stripe shipping rate error for '{name}': {err}")
         else:
