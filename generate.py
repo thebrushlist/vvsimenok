@@ -62,7 +62,7 @@ BIOGRAPHY_PARAS = (
 "I am a self-taught artist who started painting in 2024. Since 2024 I have been travelling extensively, covering 36 countries — Albania, Armenia,
 Argentina, Australia, Austria, Azerbaijan, Bahrain, Cambodia, Chile, Czechia, Egypt, Estonia, France, Georgia, Germany, Greece, Hungary, India,
 Indonesia, Italy, Laos, Malaysia, Nepal, New Zealand, Philippines, Peru, Singapore, Slovakia, South Korea, Sri Lanka, Thailand, United Arab
-Emirates, United States of America, Vanuatu, Vatican and Vietnam — of a current tally of 56.
+Emirates, United States of America, Vanuatu, Vatican and Vietnam — of a current tally of 56."
 )
 Induced by the grief, pursuing art and travel was the alternative to serving in the Ukrainian foreign legion. The focus of my art is to invite people to
 pause, converse and reflect."
@@ -70,7 +70,7 @@ pause, converse and reflect."
 STATEMENT_TEXT = (
    "My work’s intentions are to draw you into a standstill. Whether it is layers of detail or the monochrome use of colour. I aspire my work to be a point of
 reflection and meditation. My pursuit is to capture beauty from the world. From landscapes to figures. I extract the intoxicating essence of my muses
-to give the viewer a clean escape from the uncertainties and anxieties of the day to day.)"
+to give the viewer a clean escape from the uncertainties and anxieties of the day to day.")
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
